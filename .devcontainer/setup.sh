@@ -7,7 +7,8 @@ sudo apt-get update && sudo apt-get install -y build-essential
 
 echo ""
 echo "Installing Python dependencies..."
-pip install --break-system-packages -r requirements.txt
+pip install --no-cache-dir --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu
+pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 echo ""
 echo "Restoring .NET dependencies..."
