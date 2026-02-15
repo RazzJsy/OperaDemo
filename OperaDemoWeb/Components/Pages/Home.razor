@@ -1,0 +1,297 @@
+@page "/"
+@rendermode InteractiveServer
+
+<PageTitle>Document - Intelligence</PageTitle>
+
+<div class="container py-4 mt-5">
+    <div class="mb-4 text-center">
+        <h1 class="display-6 fw-semibold">
+            <i class="bi bi-bullseye me-2" /> Document - Intelligence
+        </h1>
+        <p class="text-muted">RAG-powered financial document Q&A with optimized small models</p>
+        @if (healthStatus != null)
+        {
+            <div class="d-flex flex-wrap justify-content-center gap-2 mt-3">
+                <span class="badge @(healthStatus.PipelineReady ? "bg-success" : "bg-warning text-dark")">Pipeline: @(healthStatus.PipelineReady ? "Ready" : "Initializing")</span>
+                <span class="badge @(healthStatus.DocumentsLoaded ? "bg-success" : "bg-warning text-dark")">Documents: @(healthStatus.DocumentsLoaded ? "Loaded" : "None")</span>
+                <span class="badge @(healthStatus.LlmAvailable ? "bg-success" : "bg-warning text-dark")">LLM: @(healthStatus.LlmAvailable ? "Available" : "Unavailable")</span>
+            </div>
+        }
+    </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Upload Documents <i class="bi bi-file-text me-2" /></h5>
+            <div class="mb-3">
+                <InputFile class="form-control shadow-none" OnChange="HandleFileSelection" accept=".pdf" multiple />
+            </div>
+            @if (selectedFiles.Any())
+            {
+                <div class="mb-3">
+                    <strong>Selected files:</strong>
+                    <ul class="list-group list-group-flush mt-2">
+                        @foreach (var file in selectedFiles)
+                        {
+                            <li class="list-group-item">@file.Name<span class="text-muted">(@FormatFileSize(file.Size))</span></li>
+                        }
+                    </ul>
+                </div>
+                <button class="btn btn-primary" @onclick="UploadFiles" disabled="@isUploading">@(isUploading ? "Uploading..." : "Upload & Index")
+                </button>
+            }
+            @if (!string.IsNullOrEmpty(uploadMessage))
+            {
+                <div class="alert @(uploadSuccess ? "alert-success" : "alert-danger") mt-3">
+                    @uploadMessage
+                </div>
+            }
+        </div>
+    </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Ask Questions<i class="bi bi-question-lg me-2" /></h5>
+            <div class="input-group mb-3">
+                <input type="text" class="form-control shadow-none" placeholder="e.g., What are the management fees?" @bind="currentQuestion" @bind:event="oninput" @onkeydown="HandleKeyDown" />
+                <button class="btn btn-primary" @onclick="SubmitQuery" disabled="@(isQuerying || string.IsNullOrWhiteSpace(currentQuestion))">@(isQuerying ? "Processing..." : "Submit Query")</button>
+            </div>
+            @if (isQuerying)
+            {
+                <div class="d-flex align-items-center gap-3">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <span>Processing query...</span>
+                </div>
+            }
+            @if (queryResponse != null)
+            {
+                <div class="mt-4">
+                    @if (!string.IsNullOrEmpty(queryResponse.ValidationLevel))
+                    {
+                        <span class="badge bg-info text-dark mb-3">@queryResponse.ValidationLevel.ToUpper() (@($"{(queryResponse.ConfidenceScore ?? 0) * 100:F0}")% confidence)</span>
+                    }
+                    <div class="mb-4">
+                        <h6 class="fw-semibold">Answer</h6>
+                        <p class="mb-0">@queryResponse.Answer</p>
+                    </div>
+                    @if (queryResponse.Warnings.Any())
+                    {
+                        <div class="alert alert-warning">
+                            <h6><i class="bi bi-exclamation-triangle-fill"></i> Warnings</h6>
+                            <ul class="mb-0">
+                                @foreach (var warning in queryResponse.Warnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                    @if (queryResponse.Sources.Any())
+                    {
+                        <div class="mt-4">
+                            <h6><i class="bi-icon-name" /> Sources</h6>
+                            @foreach (var source in queryResponse.Sources.Take(3))
+                            {
+                                <div class="card mb-3 border-light shadow-sm">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between">
+                                            <strong>@source.Source (Page @source.Page)</strong>
+                                            <span class="badge bg-secondary">@($"{(source.CombinedScore * 100):F1}")%</span>
+                                        </div>
+                                        <p class="text-muted mt-2 mb-0">@GetPreview(source.Text, 200)</p>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger mt-3"><i class="bi bi-x-lg"></i> @errorMessage</div>
+            }
+        </div>
+    </div>
+    @if (stats != null)
+    {
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-bar-chart-line-fill"></i> Pipeline Statistics</h5>
+                <div class="row g-3 mt-2">
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <div class="fs-4 fw-bold">@stats.Retriever.TotalChunks</div>
+                                <div class="text-muted small">Total Chunks</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <div class="fs-4 fw-bold">@stats.Retriever.UniqueSources</div>
+                                <div class="text-muted small">Documents</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center">
+                            <div class="card-body">
+                                <div class="fs-4 fw-bold">@stats.ChunkSize</div>
+                                <div class="text-muted small">Chunk Size</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card text-center h-100">
+                            <div class="card-body">
+                                <div class="fs-6 fw-bold">@stats.LlmModel.Split('/').Last()</div>
+                                <div class="text-muted small">Model</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private HealthResponse? healthStatus;
+    private StatsResponse? stats;
+    private QueryResponse? queryResponse;
+
+    private List<IBrowserFile> selectedFiles = new();
+
+    private string currentQuestion = string.Empty;
+    private string uploadMessage = string.Empty;
+    private string errorMessage = string.Empty;
+
+    private bool isUploading = false;
+    private bool isQuerying = false;
+    private bool uploadSuccess = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshStatus();
+    }
+
+    private async Task RefreshStatus()
+    {
+        healthStatus = await ApiService.GetHealthAsync();
+        stats = await ApiService.GetStatsAsync();
+    }
+
+    private void HandleFileSelection(InputFileChangeEventArgs e)
+    {
+        selectedFiles = e.GetMultipleFiles(10).ToList();
+        uploadMessage = string.Empty;
+    }
+
+    private async Task UploadFiles()
+    {
+        if (!selectedFiles.Any()) return;
+
+        isUploading = true;
+        uploadMessage = string.Empty;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var result = await ApiService.UploadDocumentsAsync(selectedFiles);
+
+            if (result != null)
+            {
+                uploadSuccess = true;
+                uploadMessage = $"Uploaded {result.FilesProcessed} document(s). {result.TotalChunks} chunks indexed.";
+                selectedFiles.Clear();
+
+                await RefreshStatus();
+            }
+            else
+            {
+                uploadSuccess = false;
+                uploadMessage = "Upload failed. Please check the logs.";
+            }
+        }
+        catch (Exception ex)
+        {
+            uploadSuccess = false;
+            uploadMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private async Task SubmitQuery()
+    {
+        if (string.IsNullOrWhiteSpace(currentQuestion))
+        {
+            return;
+        }
+
+        isQuerying = true;
+        queryResponse = null;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var request = new QueryRequest
+            {
+                Question = currentQuestion,
+                Validate = true
+            };
+
+            var result = await ApiService.QueryAsync(request);
+
+            if (result != null)
+            {
+                queryResponse = result;
+            }
+            else
+            {
+                errorMessage = "Query failed. Please ensure documents are loaded and try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isQuerying = false;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(currentQuestion) && !isQuerying)
+        {
+            await SubmitQuery();
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string GetPreview(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        return text.Length <= maxLength ? text : text[..maxLength] + "...";
+    }
+}

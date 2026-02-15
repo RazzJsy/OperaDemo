@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OperaDemo API</title>
+    <style>
+        body {
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background: #fff;
+            color: #222;
+        }
+        h1 { font-size: 18px; margin-bottom: 4px; }
+        p { color: #666; margin-bottom: 24px; font-size: 13px; }
+        h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #999; margin: 24px 0 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+        td:first-child { color: #999; width: 160px; white-space: nowrap; }
+        .ok { color: #2a2; }
+        .err { color: #c00; }
+        .endpoint { display: flex; gap: 12px; padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
+        .method { width: 40px; color: #888; }
+        a { color: #00c; }
+        #updated { font-size: 11px; color: #bbb; margin-top: 32px; }
+    </style>
+</head>
+<body>
+
+    <h1>OperaDemo - API</h1>
+    <p>RAG pipeline for financial document Q&amp;A - <a href="http://localhost:5000/" target="_blank">Frontend Portal</p>
+
+    <h2>Status</h2>
+    <table>
+        <tr><td>Pipeline</td><td id="s-pipeline">loading...</td></tr>
+        <tr><td>Documents</td><td id="s-docs">loading...</td></tr>
+        <tr><td>LLM</td><td id="s-llm">loading...</td></tr>
+    </table>
+
+    <h2>Index</h2>
+    <table>
+        <tr><td>Chunks</td><td id="stat-chunks">-</td></tr>
+        <tr><td>Sources</td><td id="stat-docs">-</td></tr>
+        <tr><td>Embedding dims</td><td id="stat-dims">-</td></tr>
+        <tr><td>Retrieval</td><td>Hybrid BM25 + Dense (top-5)</td></tr>
+        <tr><td>Model</td><td>Mistral-7B-Instruct-v0.2</td></tr>
+        <tr><td>Embeddings</td><td>all-MiniLM-L6-v2</td></tr>
+    </table>
+
+    <h2>Endpoints</h2>
+    <div class="endpoint"><span class="method">POST</span><span>/query - ask a question</span></div>
+    <div class="endpoint"><span class="method">POST</span><span>/upload - upload PDF documents</span></div>
+    <div class="endpoint"><span class="method">GET</span><span><a href="/health">/health</a></span></div>
+    <div class="endpoint"><span class="method">GET</span><span><a href="/stats">/stats</a></span></div>
+    <div class="endpoint"><span class="method">GET</span><span><a href="/docs">/docs</a> — swagger</span></div>
+
+    <div id="updated"></div>
+
+    <script>
+        async function load() {
+            try {
+                const [h, s] = await Promise.all([ fetch('/health').then(r => r.json()), fetch('/stats').then(r => r.json()) ]);
+
+                const set = (id, text, ok) => {
+                    const el = document.getElementById(id);
+                    el.textContent = text;
+                    el.className = ok ? 'ok' : 'err';
+                };
+
+                set('s-pipeline', h.pipeline_ready ? 'ready' : 'not ready', h.pipeline_ready);
+                set('s-docs', h.documents_loaded ? 'loaded' : 'none', h.documents_loaded);
+                set('s-llm', h.llm_available ? 'available' : 'unavailable', h.llm_available);
+
+                const r = s.retriever || {};
+
+                document.getElementById('stat-chunks').textContent = r.total_chunks ?? '-';
+                document.getElementById('stat-docs').textContent = r.unique_sources ?? '-';
+                document.getElementById('stat-dims').textContent = r.embedding_dims ?? '-';
+                document.getElementById('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+            } catch(e) {
+                document.getElementById('updated').textContent = 'could not reach api';
+            }
+        }
+
+        load();
+        setInterval(load, 15000);
+    </script>
+</body>
+</html>

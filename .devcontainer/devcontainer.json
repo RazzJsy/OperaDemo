@@ -1,0 +1,43 @@
+{
+  "name": "Opera Demo",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+
+  "features": {
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "9.0",
+      "installUsingApt": false
+    }
+  },
+
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/usr/share/dotnet:/home/vscode/.dotnet/tools"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csharp",
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "dotnet.dotnetPath": "/usr/share/dotnet/dotnet"
+      }
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "forwardPorts": [5000, 8000],
+
+  "portsAttributes": {
+    "5000": {
+      "label": "Blazor Frontend",
+      "onAutoForward": "notify"
+    },
+    "8000": {
+      "label": "Python API",
+      "onAutoForward": "silent"
+    }
+  }
+}
